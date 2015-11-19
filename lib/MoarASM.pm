@@ -109,8 +109,12 @@ class MoarASM::CompUnit {
         $!ast := MAST::CompUnit.new;
     }
 
-    method add-frame(&block) {
-        my $*FRAME := MAST::Frame.new;
+    method frame($i) {
+        nqp::compunitcodes($!cu)[$i];
+    }
+
+    method add-frame(&block, :$name = '<anon>') {
+        my $*FRAME := MAST::Frame.new(:$name);
         my $*CODE := nqp::getattr($*FRAME, MAST::Frame, '@!instructions');
         block;
         $!ast.add_frame($*FRAME);

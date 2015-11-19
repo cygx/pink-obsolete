@@ -1,8 +1,11 @@
+use MoarASM;
+
 my enum Kind <TERM FUNC PROC DECL DEF CONTROL INFIX PREFIX POSTFIX>;
 my subset NamedKind of Kind where TERM|FUNC|PROC|DECL|DEF|CONTROL;
 
 my role Lexel[Kind \K] {
     has $.name;
+    has $.eval;
 
     method is(\kind) { kind == K }
     method new(:$name!) { $name => self.bless(:$name, |%_) }
@@ -120,9 +123,9 @@ my grammar Grammar {
     method lookup(|args) { $*scope.lookup(|args) }
 
     token eol { \h* \v \s* | \s* $ }
-    token string { \" <-["]>* \" }
+    token string { \" <-["]>* \" { make ~$/ } }
     token number { \d+ { make $/.Str.Int } }
-    token name { [\w+]+ % ';' }
+    token name { [\w+]+ % ';' | "'" <-[']>* "'" }
 
     token infix {
         :my $op;
@@ -211,6 +214,27 @@ my grammar Grammar {
     }
 }
 
+enum <PRINTLN>;
+sub builtin($id) {
+    .frame(+$id) given BEGIN {
+        my $cu := MoarASM::CompUnit.new;
+
+        $cu.add-frame: :name<println>, {
+            my \ZERO = local int;
+            my \ARG = local str;
+            my \CAP = local Capture;
+
+            op_usecapture CAP;
+            op_captureposarg_s ARG, CAP, ZERO;
+            op_say ARG;
+
+            op_return_i ZERO;
+        }
+
+        $cu.compile;
+    }
+}
+
 sub lobby {
     Scope.new:
         :infixes(hash
@@ -218,11 +242,12 @@ sub lobby {
         ),
 
         :lexicals(hash
-            Proc.new(:name<say>),
-            Term.new(:name<PI>),
-            Declaration.new(:name<set>),
+            Proc.new(:name<println>, eval => builtin(PRINTLN)),
+            Term.new(:name<PI>, eval => pi),
+            Declaration.new(:name<var>),
             Declaration.new(:name<let>),
             Control.new(:name<if>),
+            Control.new(:name<else>),
         ),
 
         :locals(hash
@@ -238,6 +263,11 @@ sub lobby {
                     Definition.new(:name<action>),
                     Definition.new(:name<get>),
                     Definition.new(:name<set>),
+                    Definition.new(:name<load>),
+                    Definition.new(:name<store>),
+                ),
+                :lexicals(hash
+                    Term.new(:name<self>),
                 ),
             ),
         );
